@@ -7,6 +7,7 @@ https://home-assistant.io/components/sensor.xru_xbox_live/
 import logging
 import voluptuous as vol
 import urllib.request
+from urllib.error import URLError, HTTPError
 import json
 import re
 
@@ -44,8 +45,6 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
         return False
 
 
-
-
 class XboxSensor(Entity):
     """A class for the Xbox account."""
 
@@ -55,11 +54,18 @@ class XboxSensor(Entity):
         self._state = STATE_UNKNOWN
         self._presence = {}
         self._gamertag = gamertag
-
+        tries = 0
+        userDetails = []
         # get profile info
-        userDetails = self.fetch_user_details(self._gamertag)
         
-
+        
+        while True:
+            userDetails = self.fetch_user_details(self._gamertag)
+            _LOGGER.critical(userDetails)
+            if ('status' in userDetails and userDetails['status'] == "success" or tries > 5):
+                break
+            tries = tries + 1
+ 
         if userDetails['status'] == "success":
             self.update()
             self.success_init = True
@@ -69,6 +75,7 @@ class XboxSensor(Entity):
                     pic = re.sub("http://images-eds", "https://images-eds-ssl", pic)
                     self._picture = self._picture = pic
         else:
+            _LOGGER.critical("Failed to setup {}, this gamertag will be missing".format(gamertag))
             self.success_init = False
 
     @property
@@ -85,12 +92,19 @@ class XboxSensor(Entity):
     def device_state_attributes(self):
         """Return the state attributes."""
         attributes = {}
-        #for device in self._presence:
-        #    for title in device.get('titles'):
-        #        attributes[
-        #            '{} {}'.format(device.get('type'), title.get('placement'))
-        #        ] = title.get('name')
 
+        if (self._state == "Online"):
+            for device in self._presence['userPresence'][0]['devices']:
+                for title in device['titles']:
+                    if (title['placement'] == "Full"):
+                        attributes[
+                            '{}'.format(title['name'])
+                        ] = '{}'.format(device['type'])
+        else:
+            attributes[
+                'Offline'
+            ] = 'Offline'
+                
         return attributes
 
     @property
@@ -111,18 +125,48 @@ class XboxSensor(Entity):
 
     def fetch_user_details(self, gamertag):
         """ Fetches user details """
+        data = []
+        _LOGGER.info("Fetching user details for {}".format(gamertag))
         url = 'https://api.xboxrecord.us/userdetails/gamertag/{}'.format(gamertag)
         req = urllib.request.Request(url)
-        raw_json = urllib.request.urlopen(req).read()
+        try:
+            raw_json = urllib.request.urlopen(req).read()
+        except urllib.error.HTTPError as e:
+            _LOGGER.critical(e.code)
+            _LOGGER.critical(e.read())
+            return {"status":"failure"}
+        
         data = json.loads(raw_json.decode('utf-8'))
 
         return data
 
     def fetch_user_presence(self, gamertag):
         """ Fetches user presence """
+        data = []
+        _LOGGER.info("Fetching user presence for {}".format(gamertag))
         url = 'https://api.xboxrecord.us/userpresence/gamertag/{}'.format(gamertag)
         req = urllib.request.Request(url)
-        raw_json = urllib.request.urlopen(req).read()
+        try:
+            raw_json = urllib.request.urlopen(req).read()
+        except urllib.error.HTTPError as e:
+            _LOGGER.critical(e.code)
+            _LOGGER.critical(e.read())
+            return {"status":"failure"}
+        
         data = json.loads(raw_json.decode('utf-8'))
 
         return data
+
+    def fetch_user_details_wrapper(self, gamertag):
+        userDetails = self.fetch_user_details(self._gamertag)
+        
+        if userDetails['status'] == "success":
+            
+            self.success_init = True
+            for item in userDetails['userDetails']:
+                if (item['id'] == "GameDisplayPicRaw"):
+                    pic = item['value']
+                    pic = re.sub("http://images-eds", "https://images-eds-ssl", pic)
+                    self._picture = self._picture = pic
+
+        return userDetails
