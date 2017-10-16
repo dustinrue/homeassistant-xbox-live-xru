@@ -34,7 +34,6 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
     devices = []
     _LOGGER.info('test')
     for gamertag in config.get(CONF_GAMERTAGS):
-        _LOGGER.info(gamertag)
         new_device = XboxSensor(hass, gamertag)
         if new_device.success_init:
             devices.append(new_device)
@@ -61,7 +60,6 @@ class XboxSensor(Entity):
         
         while True:
             userDetails = self.fetch_user_details(self._gamertag)
-            _LOGGER.critical(userDetails)
             if ('status' in userDetails and userDetails['status'] == "success" or tries > 5):
                 break
             tries = tries + 1
