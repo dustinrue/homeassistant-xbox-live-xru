@@ -118,7 +118,7 @@ class XboxSensor(Entity):
     def update(self):
         """Update state data from Xbox API."""
         presence = self.fetch_user_presence(self._gamertag)
-        self._state = presence['userPresence'][0]['state']
+        self._state = presence['userPresence'][0]['current_activity']['name']
         self._presence = presence
 
     def fetch_user_details(self, gamertag):
